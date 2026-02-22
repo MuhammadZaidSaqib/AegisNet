@@ -14,8 +14,11 @@ AegisNet/
 ├── client/
 │   ├── __init__.py
 │   ├── client.py
+│   ├── gui_chat.py
+│   ├── gui_login.py
 │   ├── gui.py
 │   ├── encryption.py
+│   ├── network.py
 │   └── key_exchange.py
 │
 ├── database/

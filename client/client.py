@@ -1,5 +1,7 @@
 import socket
 import threading
+import json
+import sys
 
 from .key_exchange import (
     load_parameters,
@@ -24,37 +26,40 @@ def receive_messages(sock):
         try:
             data = sock.recv(8192)
             if not data:
+                print("\n[SERVER DISCONNECTED]")
                 break
 
             decrypted = decrypt_message(session_key, data)
-            print(f"\n[RECEIVED] {decrypted}")
+            print(f"\n{decrypted}\nYou: ", end="")
+
         except Exception as e:
-            print(f"[RECEIVE ERROR] {e}")
+            print(f"\n[RECEIVE ERROR] {e}")
             break
+
+    sock.close()
+    sys.exit()
 
 
 def start_client():
     global session_key
 
-    # ✅ CREATE SOCKET FIRST
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client.connect((HOST, PORT))
+    try:
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client.connect((HOST, PORT))
+    except Exception as e:
+        print(f"[CONNECTION FAILED] {e}")
+        return
 
     print("[CONNECTED TO SERVER]")
 
-    # --- Receive DH parameters from server ---
     param_bytes = client.recv(4096)
     parameters = load_parameters(param_bytes)
 
-    # Generate client keypair
     private_key, public_bytes = generate_dh_keypair(parameters)
 
-    # Send client public key
     client.send(public_bytes)
 
-    # Receive server public key
     server_public_bytes = client.recv(4096)
-
     server_public_key = load_peer_public_key(server_public_bytes)
 
     shared_secret = generate_shared_secret(private_key, server_public_key)
@@ -63,12 +68,62 @@ def start_client():
 
     print("[SECURE SESSION ESTABLISHED]")
 
-    # Start receiving thread
-    thread = threading.Thread(target=receive_messages, args=(client,))
+
+    while True:
+        print("\n1) Login")
+        print("2) Register")
+        choice = input("Select: ").strip()
+
+        if choice not in ["1", "2"]:
+            print("Invalid choice.")
+            continue
+
+        username = input("Username: ").strip()
+        password = input("Password: ").strip()
+
+        request = {
+            "action": "login" if choice == "1" else "register",
+            "username": username,
+            "password": password
+        }
+
+        encrypted_request = encrypt_message(
+            session_key, json.dumps(request)
+        )
+        client.send(encrypted_request)
+
+        response_data = client.recv(8192)
+        decrypted_response = decrypt_message(session_key, response_data)
+
+        response = json.loads(decrypted_response)
+
+        if response["status"] == "success":
+            print("[AUTH SUCCESSFUL]")
+            break
+        else:
+            print("[AUTH FAILED]", response.get("message", ""))
+
+
+    thread = threading.Thread(
+        target=receive_messages,
+        args=(client,)
+    )
     thread.daemon = True
     thread.start()
 
+
     while True:
-        message = input("You: ")
-        encrypted = encrypt_message(session_key, message)
-        client.send(encrypted)
+        try:
+            message = input("You: ")
+
+            if message.lower() == "/exit":
+                print("Disconnecting...")
+                client.close()
+                break
+
+            encrypted = encrypt_message(session_key, message)
+            client.send(encrypted)
+
+        except Exception as e:
+            print(f"[SEND ERROR] {e}")
+            break
