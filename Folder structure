@@ -1,0 +1,31 @@
+AegisNet/
+│
+├── server/
+│   ├── __init__.py
+│   ├── server.py
+│   ├── client_handler.py
+│   ├── auth.py
+│   ├── key_exchange.py
+│   ├── encryption.py
+│   ├── database.py
+│   ├── logger.py
+│   └── intrusion_detection.py
+│
+├── client/
+│   ├── __init__.py
+│   ├── client.py
+│   ├── gui.py
+│   ├── encryption.py
+│   └── key_exchange.py
+│
+├── database/
+│
+├── logs/
+│
+├── config/
+│   └── settings.json
+│
+├── run_server.py
+├── run_client.py
+├── requirements.txt
+└── README.md
