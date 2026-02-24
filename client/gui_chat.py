@@ -1,205 +1,187 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
-    QTextEdit, QLineEdit, QPushButton,
-    QListWidget, QLabel, QFileDialog, QMessageBox
+    QLineEdit, QPushButton, QListWidget,
+    QLabel, QScrollArea, QFrame
 )
 from PyQt5.QtCore import Qt
-import base64
-import json
-import os
-from .encryption import decrypt_message
+from PyQt5.QtGui import QFont
+
+
+class MessageBubble(QFrame):
+    def __init__(self, text, is_self=False):
+        super().__init__()
+
+        layout = QVBoxLayout()
+        label = QLabel(text)
+        label.setWordWrap(True)
+
+        label.setFont(QFont("Consolas", 10))
+        layout.addWidget(label)
+        self.setLayout(layout)
+
+        if is_self:
+            self.setStyleSheet("""
+                background-color: #001F1F;
+                border: 1px solid #00FF9C;
+                border-radius: 6px;
+                padding: 6px;
+            """)
+        else:
+            self.setStyleSheet("""
+                background-color: #111111;
+                border: 1px solid #00FF00;
+                border-radius: 6px;
+                padding: 6px;
+            """)
 
 
 class ChatWindow(QWidget):
-    def __init__(self, secure_client):
+    def __init__(self, client):
         super().__init__()
-        self.client = secure_client
+        self.client = client
 
-        self.setWindowTitle("AegisNet Secure Messenger")
-        self.setGeometry(200, 200, 900, 550)
+        self.setWindowTitle("AegisNet // Secure Channel")
+        self.setGeometry(200, 80, 1000, 650)
 
-        self.init_ui()
-        self.apply_dark_theme()
+        main_layout = QHBoxLayout(self)
 
-        # Connect network callbacks
-        self.client.on_message = self.display_message
-        self.client.on_user_list = self.update_users
-
-        self.load_history()
-
-    # -----------------------------------
-    # UI Layout
-    # -----------------------------------
-    def init_ui(self):
-        main_layout = QHBoxLayout()
-
-        # LEFT SIDE (Chat)
+        # ===== LEFT SIDE =====
         left_layout = QVBoxLayout()
 
-        self.chat_area = QTextEdit()
-        self.chat_area.setReadOnly(True)
-        left_layout.addWidget(self.chat_area)
+        header = QLabel("🟢 SECURE CHANNEL ACTIVE // AES-GCM // DH KEY EXCHANGE")
+        header.setStyleSheet("color: #00FF00; font-weight: bold;")
+        left_layout.addWidget(header)
 
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+
+        self.chat_container = QWidget()
+        self.chat_layout = QVBoxLayout(self.chat_container)
+        self.chat_layout.setAlignment(Qt.AlignTop)
+
+        self.scroll_area.setWidget(self.chat_container)
+        left_layout.addWidget(self.scroll_area)
+
+        # Input Bar
         bottom_layout = QHBoxLayout()
 
-        self.message_input = QLineEdit()
-        self.message_input.setPlaceholderText("Type message or /pm user message")
-        self.message_input.returnPressed.connect(self.send_message)
-        bottom_layout.addWidget(self.message_input)
+        self.input = QLineEdit()
+        self.input.setPlaceholderText(">> transmit encrypted payload...")
+        self.input.setStyleSheet("""
+            background-color: black;
+            color: #00FF00;
+            border: 1px solid #00FF00;
+            padding: 6px;
+        """)
+        bottom_layout.addWidget(self.input)
 
-        self.send_button = QPushButton("Send")
-        self.send_button.clicked.connect(self.send_message)
-        bottom_layout.addWidget(self.send_button)
-
-        self.file_button = QPushButton("Send File")
-        self.file_button.clicked.connect(self.send_file)
-        bottom_layout.addWidget(self.file_button)
+        send_btn = QPushButton("SEND")
+        send_btn.setStyleSheet("""
+            background-color: black;
+            color: #00FF00;
+            border: 1px solid #00FF00;
+            padding: 6px;
+        """)
+        send_btn.clicked.connect(self.send_message)
+        bottom_layout.addWidget(send_btn)
 
         left_layout.addLayout(bottom_layout)
 
-        # RIGHT SIDE (Online Users)
+        # ===== RIGHT SIDE =====
         right_layout = QVBoxLayout()
-        right_layout.addWidget(QLabel("Online Users"))
 
-        self.user_list = QListWidget()
-        self.user_list.setMaximumWidth(200)
-        right_layout.addWidget(self.user_list)
+        users_label = QLabel("ONLINE NODES")
+        users_label.setStyleSheet("color: #00FF00;")
+        right_layout.addWidget(users_label)
+
+        self.users_list = QListWidget()
+        self.users_list.setStyleSheet("""
+            background-color: black;
+            color: #00FF00;
+            border: 1px solid #00FF00;
+        """)
+        right_layout.addWidget(self.users_list)
 
         main_layout.addLayout(left_layout, 3)
         main_layout.addLayout(right_layout, 1)
 
-        self.setLayout(main_layout)
+        self.client.on_message = self.display_message
+        self.apply_cyberpunk_theme()
 
-    # -----------------------------------
-    # Dark Theme
-    # -----------------------------------
-    def apply_dark_theme(self):
+    # =========================
+    def send_message(self):
+        text = self.input.text()
+        if not text:
+            return
+
+        if text.startswith("/pm"):
+            parts = text.split(" ", 2)
+            if len(parts) < 3:
+                return
+            payload = {
+                "type": "pm",
+                "to": parts[1],
+                "content": parts[2]
+            }
+        elif text == "/users":
+            payload = {"type": "users"}
+        else:
+            payload = {
+                "type": "chat",
+                "content": text
+            }
+
+        self.client.send_message(payload)
+        self.add_message(f"[YOU] {text}", is_self=True)
+        self.input.clear()
+
+    # =========================
+    def display_message(self, message):
+        if message["type"] == "chat":
+            text = f"[{message['timestamp']}] {message['from']}: {message['content']}"
+            self.add_message(text)
+
+        elif message["type"] == "pm":
+            text = f"[PRIVATE {message['timestamp']}] {message['from']}: {message['content']}"
+            self.add_message(text)
+
+        elif message["type"] == "system":
+            text = f"[SYSTEM ALERT] {message['message']}"
+            self.add_message(text)
+
+        elif message["type"] == "users":
+            self.users_list.clear()
+            self.users_list.addItems(message["list"])
+
+        elif message["type"] == "error":
+            self.add_message(f"[ERROR] {message['message']}")
+
+    # =========================
+    def add_message(self, text, is_self=False):
+        bubble = MessageBubble(text, is_self)
+        container = QHBoxLayout()
+
+        if is_self:
+            container.addStretch()
+            container.addWidget(bubble)
+        else:
+            container.addWidget(bubble)
+            container.addStretch()
+
+        wrapper = QWidget()
+        wrapper.setLayout(container)
+        self.chat_layout.addWidget(wrapper)
+
+        self.scroll_area.verticalScrollBar().setValue(
+            self.scroll_area.verticalScrollBar().maximum()
+        )
+
+    # =========================
+    def apply_cyberpunk_theme(self):
         self.setStyleSheet("""
             QWidget {
-                background-color: #121212;
-                color: #E0E0E0;
-                font-family: Segoe UI;
-                font-size: 12px;
-            }
-            QTextEdit {
-                background-color: #1E1E1E;
-                border: 1px solid #2A2A2A;
-            }
-            QLineEdit {
-                background-color: #1E1E1E;
-                border: 1px solid #2A2A2A;
-                padding: 5px;
-            }
-            QPushButton {
-                background-color: #2A2A2A;
-                border: 1px solid #3A3A3A;
-                padding: 5px;
-            }
-            QPushButton:hover {
-                background-color: #3A3A3A;
-            }
-            QListWidget {
-                background-color: #1E1E1E;
-                border: 1px solid #2A2A2A;
+                background-color: black;
+                color: #00FF00;
+                font-family: Consolas;
             }
         """)
-
-    # -----------------------------------
-    # Send Text Message
-    # -----------------------------------
-    def send_message(self):
-        message = self.message_input.text().strip()
-        if not message:
-            return
-
-        self.chat_area.append(f"You: {message}")
-        self.client.send_message(message)
-        self.message_input.clear()
-
-        self.chat_area.verticalScrollBar().setValue(
-            self.chat_area.verticalScrollBar().maximum()
-        )
-
-    # -----------------------------------
-    # Send File
-    # -----------------------------------
-    def send_file(self):
-        selected_user = self.user_list.currentItem()
-
-        if not selected_user:
-            QMessageBox.warning(
-                self,
-                "No User Selected",
-                "Select a user to send a file."
-            )
-            return
-
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select File")
-
-        if not file_path:
-            return
-
-        try:
-            with open(file_path, "rb") as f:
-                encoded_data = base64.b64encode(f.read()).decode()
-
-            payload = json.dumps({
-                "type": "file",
-                "to": selected_user.text(),
-                "filename": os.path.basename(file_path),
-                "data": encoded_data
-            })
-
-            self.client.send_message(payload)
-
-            self.chat_area.append(
-                f"You sent file '{os.path.basename(file_path)}' to {selected_user.text()}"
-            )
-
-        except Exception as e:
-            QMessageBox.critical(self, "File Error", str(e))
-
-    # -----------------------------------
-    # Display Incoming Message
-    # -----------------------------------
-    def display_message(self, message):
-        self.chat_area.append(message)
-        self.chat_area.verticalScrollBar().setValue(
-            self.chat_area.verticalScrollBar().maximum()
-        )
-
-    # -----------------------------------
-    # Update Online Users
-    # -----------------------------------
-    def update_users(self, users):
-        self.user_list.clear()
-        self.user_list.addItems(users)
-
-    # -----------------------------------
-    # Load Encrypted History
-    # -----------------------------------
-    def load_history(self):
-        try:
-            if not self.client.username:
-                return
-
-            filename = f"history/{self.client.username}.bin"
-
-            if not os.path.exists(filename):
-                return
-
-            with open(filename, "rb") as f:
-                lines = f.readlines()
-
-            for line in lines:
-                try:
-                    decrypted = decrypt_message(
-                        self.client.session_key,
-                        line.strip()
-                    )
-                    self.chat_area.append(decrypted)
-                except:
-                    continue
-
-        except:
-            pass

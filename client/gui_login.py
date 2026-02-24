@@ -1,36 +1,39 @@
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel,
-    QLineEdit, QPushButton, QMessageBox
+    QWidget, QVBoxLayout, QLineEdit,
+    QPushButton, QLabel, QMessageBox
 )
+from .network import SecureClient
+from .gui_chat import ChatWindow
 
 
 class LoginWindow(QWidget):
-    def __init__(self, secure_client, on_success):
+    def __init__(self):
         super().__init__()
-        self.client = secure_client
-        self.on_success = on_success
 
-        self.setWindowTitle("AegisNet Login")
-        self.setGeometry(300, 300, 300, 200)
+        self.client = SecureClient()
+        self.client.connect()
+
+        self.setWindowTitle("AegisNet Secure Login")
+        self.setGeometry(500, 200, 300, 200)
 
         layout = QVBoxLayout()
 
-        self.username_input = QLineEdit()
-        self.username_input.setPlaceholderText("Username")
-        layout.addWidget(self.username_input)
+        self.username = QLineEdit()
+        self.username.setPlaceholderText("Username")
+        layout.addWidget(self.username)
 
-        self.password_input = QLineEdit()
-        self.password_input.setPlaceholderText("Password")
-        self.password_input.setEchoMode(QLineEdit.Password)
-        layout.addWidget(self.password_input)
+        self.password = QLineEdit()
+        self.password.setPlaceholderText("Password")
+        self.password.setEchoMode(QLineEdit.Password)
+        layout.addWidget(self.password)
 
-        self.login_button = QPushButton("Login")
-        self.login_button.clicked.connect(self.login)
-        layout.addWidget(self.login_button)
+        login_btn = QPushButton("Login")
+        login_btn.clicked.connect(self.login)
+        layout.addWidget(login_btn)
 
-        self.register_button = QPushButton("Register")
-        self.register_button.clicked.connect(self.register)
-        layout.addWidget(self.register_button)
+        register_btn = QPushButton("Register")
+        register_btn.clicked.connect(self.register)
+        layout.addWidget(register_btn)
 
         self.setLayout(layout)
 
@@ -41,15 +44,15 @@ class LoginWindow(QWidget):
         self.authenticate("register")
 
     def authenticate(self, action):
-        username = self.username_input.text()
-        password = self.password_input.text()
-
-        success, message = self.client.authenticate(
-            action, username, password
+        success, msg = self.client.authenticate(
+            action,
+            self.username.text(),
+            self.password.text()
         )
 
         if success:
-            self.on_success()
+            self.chat = ChatWindow(self.client)
+            self.chat.show()
             self.close()
         else:
-            QMessageBox.warning(self, "Error", message)
+            QMessageBox.warning(self, "Error", msg)
